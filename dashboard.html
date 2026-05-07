@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>QC Server — Quantum Channel Monitor</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cinzel+Decorative:wght@700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#080c14;--card:#0d1220;--card2:#111827;--border:#1e2d45;--primary:#3b82f6;--purple:#a855f7;--green:#10b981;--red:#ef4444;--yellow:#f59e0b;--text:#e2e8f0;--muted:#64748b}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+
+/* ── HEADER ── */
+header{background:linear-gradient(135deg,rgba(13,18,32,0.98),rgba(8,12,20,0.98));border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;backdrop-filter:blur(12px)}
+.header-left{display:flex;align-items:center;gap:14px}
+.logo{font-family:'Cinzel Decorative',serif;font-size:clamp(13px,1.8vw,18px);color:#e8d5ff;text-shadow:0 0 20px rgba(168,85,247,0.6);letter-spacing:.05em}
+.logo span{color:var(--primary)}
+.header-badge{font-size:11px;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);color:var(--green);padding:3px 10px;border-radius:999px;letter-spacing:.1em;animation:pulseBadge 2s ease-in-out infinite}
+@keyframes pulseBadge{0%,100%{opacity:1}50%{opacity:.6}}
+.header-right{display:flex;align-items:center;gap:20px}
+.online-pill{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.online-dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse-ring 2s infinite}
+@keyframes pulse-ring{0%{transform:scale(.8);opacity:1}100%{transform:scale(1.6);opacity:0}}
+#clock{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--muted)}
+
+/* ── LAYOUT ── */
+main{padding:20px;display:grid;gap:20px;grid-template-columns:1fr 1fr 1fr;grid-template-rows:auto auto auto}
+@media(max-width:1024px){main{grid-template-columns:1fr 1fr}}
+@media(max-width:640px){main{grid-template-columns:1fr;padding:12px}}
+
+/* ── CARDS ── */
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(59,130,246,0.03),transparent);pointer-events:none}
+.card-title{font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.card-title svg{opacity:.6}
+
+/* ── STAT CARDS ── */
+.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;grid-column:1/-1}
+@media(max-width:640px){.stat-grid{grid-template-columns:1fr 1fr}}
+.stat{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:16px 18px}
+.stat-label{font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px}
+.stat-value{font-family:'JetBrains Mono',monospace;font-size:clamp(22px,3vw,32px);font-weight:600;line-height:1}
+.stat-value.blue{color:var(--primary);text-shadow:0 0 20px rgba(59,130,246,0.4)}
+.stat-value.green{color:var(--green);text-shadow:0 0 20px rgba(16,185,129,0.4)}
+.stat-value.purple{color:var(--purple);text-shadow:0 0 20px rgba(168,85,247,0.4)}
+
+/* ── DATA TRANSFER ANIMATION ── */
+.transfer-card{grid-column:1/-1}
+.transfer-vis{position:relative;height:120px;background:rgba(0,0,0,0.3);border-radius:10px;overflow:hidden;border:1px solid var(--border);margin-bottom:14px}
+.node{position:absolute;top:50%;transform:translateY(-50%);width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;border:2px solid}
+.node-alice{left:24px;background:rgba(59,130,246,0.15);border-color:rgba(59,130,246,0.5);color:var(--primary)}
+.node-server{left:50%;transform:translate(-50%,-50%);background:rgba(168,85,247,0.15);border-color:rgba(168,85,247,0.5);color:var(--purple)}
+.node-bob{right:24px;background:rgba(16,185,129,0.15);border-color:rgba(16,185,129,0.5);color:var(--green)}
+.node-label{position:absolute;font-size:10px;letter-spacing:.08em;color:var(--muted);white-space:nowrap}
+.node-alice + .node-label{left:10px;top:calc(50% + 32px);transform:translateY(-50%)}
+.node-server + .node-label{left:50%;top:calc(50% + 32px);transform:translate(-50%,-50%)}
+.node-bob + .node-label{right:10px;top:calc(50% + 32px);transform:translateY(-50%)}
+.line{position:absolute;top:50%;height:2px;background:linear-gradient(90deg,rgba(59,130,246,0.2),rgba(168,85,247,0.2));transform:translateY(-50%)}
+.line-left{left:76px;right:calc(50% + 26px)}
+.line-right{left:calc(50% + 26px);right:76px}
+.packet{position:absolute;top:50%;width:10px;height:10px;border-radius:50%;transform:translateY(-50%);opacity:0;pointer-events:none}
+.packet.alice-to-server{background:var(--primary);box-shadow:0 0 10px var(--primary)}
+.packet.server-to-bob{background:var(--purple);box-shadow:0 0 10px var(--purple)}
+.packet.bob-to-server{background:var(--green);box-shadow:0 0 10px var(--green)}
+.packet.server-to-alice{background:var(--yellow);box-shadow:0 0 10px var(--yellow)}
+
+/* ── LIVE LOG ── */
+.log-card{grid-column:span 2}
+@media(max-width:640px){.log-card{grid-column:1}}
+.log-list{display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto}
+.log-list::-webkit-scrollbar{width:4px}
+.log-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.log-entry{display:grid;grid-template-columns:60px 130px 1fr auto;gap:8px;align-items:center;padding:8px 12px;background:var(--card2);border-radius:8px;border:1px solid var(--border);font-size:12px;animation:entryIn .3s ease-out}
+@keyframes entryIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
+@media(max-width:480px){.log-entry{grid-template-columns:50px 1fr;gap:4px}.log-trust{display:none}}
+.log-time{font-family:'JetBrains Mono',monospace;color:var(--muted);font-size:11px}
+.log-event{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font-size:10px;letter-spacing:.08em;font-weight:600;white-space:nowrap}
+.ev-created{background:rgba(59,130,246,0.15);color:var(--primary);border:1px solid rgba(59,130,246,0.3)}
+.ev-transmitted{background:rgba(16,185,129,0.15);color:var(--green);border:1px solid rgba(16,185,129,0.3)}
+.ev-rejected{background:rgba(239,68,68,0.15);color:var(--red);border:1px solid rgba(239,68,68,0.3)}
+.log-route{color:var(--text);font-size:12px}
+.log-trust{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);text-align:right;white-space:nowrap}
+
+/* ── SESSIONS TABLE ── */
+.sessions-card{}
+.sessions-list{display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto}
+.sessions-list::-webkit-scrollbar{width:4px}
+.sessions-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.session-row{padding:10px 12px;background:var(--card2);border-radius:8px;border:1px solid var(--border);font-size:12px}
+.session-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.session-id{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--purple)}
+.session-status{font-size:10px;padding:2px 8px;border-radius:999px;font-weight:600}
+.s-ready{background:rgba(16,185,129,0.15);color:var(--green);border:1px solid rgba(16,185,129,0.3)}
+.s-wait{background:rgba(245,158,11,0.15);color:var(--yellow);border:1px solid rgba(245,158,11,0.3)}
+.session-bars{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.bar-wrap{display:flex;flex-direction:column;gap:3px}
+.bar-label{font-size:10px;color:var(--muted);display:flex;justify-content:space-between}
+.bar-track{height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden}
+.bar-fill{height:100%;border-radius:2px;transition:width .4s ease}
+.bar-trust .bar-fill{background:linear-gradient(90deg,var(--primary),var(--purple))}
+.bar-error .bar-fill{background:linear-gradient(90deg,var(--green),var(--yellow))}
+
+/* ── ONLINE NODES ── */
+.nodes-card{}
+.nodes-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.node-card{padding:14px;background:var(--card2);border-radius:10px;border:1px solid var(--border);display:flex;align-items:center;gap:12px}
+.node-avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0}
+.na-alice{background:rgba(59,130,246,0.2);border:2px solid rgba(59,130,246,0.4);color:var(--primary)}
+.na-bob{background:rgba(16,185,129,0.2);border:2px solid rgba(16,185,129,0.4);color:var(--green)}
+.node-info{flex:1;min-width:0}
+.node-name{font-weight:600;font-size:13px}
+.node-state{font-size:11px;color:var(--muted);margin-top:2px}
+.node-indicator{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.ind-on{background:var(--green);box-shadow:0 0 6px var(--green)}
+.ind-off{background:var(--muted)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <div class="logo">QC<span>Server</span></div>
+    <div class="header-badge">● ACTIVE</div>
+  </div>
+  <div class="header-right">
+    <div class="online-pill">
+      <div class="online-dot"></div>
+      <span id="online-count">0 nodes</span>
+    </div>
+    <div id="clock">--:--:--</div>
+  </div>
+</header>
+
+<main>
+
+  <!-- STAT CARDS -->
+  <div class="stat-grid">
+    <div class="stat">
+      <div class="stat-label">Total Sessions</div>
+      <div class="stat-value blue" id="stat-sessions">0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Transmitted</div>
+      <div class="stat-value green" id="stat-transmitted">0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Avg Trust</div>
+      <div class="stat-value purple" id="stat-trust">—</div>
+    </div>
+  </div>
+
+  <!-- DATA TRANSFER ANIMATION -->
+  <div class="card transfer-card">
+    <div class="card-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      Live Data Transfer
+    </div>
+    <div class="transfer-vis" id="transfer-vis">
+      <div class="line line-left"></div>
+      <div class="line line-right"></div>
+      <div class="node node-alice">A</div>
+      <div class="node node-server">QC</div>
+      <div class="node node-bob">B</div>
+    </div>
+    <div style="font-size:11px;color:var(--muted);text-align:center;letter-spacing:.1em" id="transfer-status">Monitoring channel…</div>
+  </div>
+
+  <!-- LIVE LOG -->
+  <div class="card log-card">
+    <div class="card-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+      Event Log
+    </div>
+    <div class="log-list" id="log-list">
+      <div style="color:var(--muted);font-size:12px;text-align:center;padding:20px">Waiting for events…</div>
+    </div>
+  </div>
+
+  <!-- ACTIVE SESSIONS -->
+  <div class="card sessions-card">
+    <div class="card-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+      Active Sessions
+    </div>
+    <div class="sessions-list" id="sessions-list">
+      <div style="color:var(--muted);font-size:12px;text-align:center;padding:20px">No active sessions</div>
+    </div>
+  </div>
+
+  <!-- ONLINE NODES -->
+  <div class="card nodes-card">
+    <div class="card-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+      Node Status
+    </div>
+    <div class="nodes-grid">
+      <div class="node-card">
+        <div class="node-avatar na-alice">A</div>
+        <div class="node-info">
+          <div class="node-name">Alice</div>
+          <div class="node-state" id="alice-state">Offline</div>
+        </div>
+        <div class="node-indicator ind-off" id="alice-ind"></div>
+      </div>
+      <div class="node-card">
+        <div class="node-avatar na-bob">B</div>
+        <div class="node-info">
+          <div class="node-name">Bob</div>
+          <div class="node-state" id="bob-state">Offline</div>
+        </div>
+        <div class="node-indicator ind-off" id="bob-ind"></div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// Clock
+setInterval(()=>{
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+},1000);
+
+let totalSessions=0, totalTransmitted=0, trustSum=0, trustCount=0;
+let logInitialized=false;
+
+// SSE for real-time events
+const es = new EventSource('/stream');
+es.onmessage = e => {
+  const entry = JSON.parse(e.data);
+  appendLog(entry);
+  if(entry.event==='SESSION_CREATED') triggerAnimation('alice-to-server', entry);
+  if(entry.event==='TRANSMITTED') triggerAnimation('server-to-bob', entry);
+};
+
+// Poll dashboard data every 2s
+async function poll(){
+  try{
+    const r = await fetch('/dashboard_data');
+    const d = await r.json();
+
+    // online nodes
+    document.getElementById('online-count').textContent = d.online.length + ' node' + (d.online.length!==1?'s':'');
+    ['Alice','Bob'].forEach(name=>{
+      const on = d.online.includes(name);
+      const key = name.toLowerCase();
+      document.getElementById(key+'-ind').className = 'node-indicator ' + (on?'ind-on':'ind-off');
+      document.getElementById(key+'-state').textContent = on ? 'Online • Active' : 'Offline';
+    });
+
+    // sessions
+    totalSessions = d.sessions.length;
+    totalTransmitted = d.log.filter(l=>l.event==='TRANSMITTED').length;
+    const trusts = d.log.filter(l=>l.trust).map(l=>l.trust);
+    const avgTrust = trusts.length ? (trusts.reduce((a,b)=>a+b,0)/trusts.length).toFixed(3) : '—';
+    document.getElementById('stat-sessions').textContent = totalSessions;
+    document.getElementById('stat-transmitted').textContent = totalTransmitted;
+    document.getElementById('stat-trust').textContent = avgTrust;
+
+    // sessions list
+    const sl = document.getElementById('sessions-list');
+    if(d.sessions.length===0){
+      sl.innerHTML='<div style="color:var(--muted);font-size:12px;text-align:center;padding:20px">No active sessions</div>';
+    } else {
+      sl.innerHTML = d.sessions.slice().reverse().map(s=>`
+        <div class="session-row">
+          <div class="session-top">
+            <span class="session-id">#${s.id}</span>
+            <span class="session-status ${s.ready?'s-ready':'s-wait'}">${s.ready?'TRANSMITTED':'WAITING'}</span>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:8px">${s.sender} → ${s.receiver} · ${s.age}s ago</div>
+          <div class="session-bars">
+            <div class="bar-wrap bar-trust">
+              <div class="bar-label"><span>Trust</span><span>${s.trust}</span></div>
+              <div class="bar-track"><div class="bar-fill" style="width:${(s.trust*100).toFixed(1)}%"></div></div>
+            </div>
+            <div class="bar-wrap bar-error">
+              <div class="bar-label"><span>Bit Error</span><span>${s.bit_error}</span></div>
+              <div class="bar-track"><div class="bar-fill" style="width:${(s.bit_error*100).toFixed(1)}%"></div></div>
+            </div>
+          </div>
+        </div>`).join('');
+    }
+
+    // init log from poll on first load
+    if(!logInitialized && d.log.length>0){
+      logInitialized=true;
+      document.getElementById('log-list').innerHTML='';
+      d.log.forEach(appendLog);
+    }
+  }catch(e){}
+}
+poll();
+setInterval(poll, 2000);
+
+function appendLog(entry){
+  const ll = document.getElementById('log-list');
+  if(ll.querySelector('[data-empty]')) ll.innerHTML='';
+  const cls = entry.event==='SESSION_CREATED'?'ev-created':entry.event==='TRANSMITTED'?'ev-transmitted':'ev-rejected';
+  const label = entry.event==='SESSION_CREATED'?'SESSION':entry.event==='TRANSMITTED'?'SENT':'REJECTED';
+  const div = document.createElement('div');
+  div.className='log-entry';
+  div.innerHTML=`
+    <span class="log-time">${entry.time}</span>
+    <span class="log-event ${cls}">${label}</span>
+    <span class="log-route">${entry.sender} → ${entry.receiver}</span>
+    <span class="log-trust">T:${entry.trust} E:${entry.bit_error}</span>`;
+  ll.prepend(div);
+  while(ll.children.length>40) ll.removeChild(ll.lastChild);
+}
+
+// Packet animation
+function triggerAnimation(type, entry){
+  const vis = document.getElementById('transfer-vis');
+  const pkt = document.createElement('div');
+  pkt.className = 'packet ' + type;
+  vis.appendChild(pkt);
+
+  const visW = vis.offsetWidth;
+  const positions = {
+    'alice-to-server': {from: 50,       to: visW/2},
+    'server-to-bob':   {from: visW/2,   to: visW-50},
+    'bob-to-server':   {from: visW-50,  to: visW/2},
+    'server-to-alice': {from: visW/2,   to: 50}
+  };
+  const {from, to} = positions[type];
+
+  const labels = {
+    'alice-to-server': `Alice → QC Server · Session requested`,
+    'server-to-bob':   `QC Server → Bob · Transmitting encrypted packet`
+  };
+  document.getElementById('transfer-status').textContent = labels[type] || '';
+
+  pkt.style.left = from + 'px';
+  pkt.style.opacity = '1';
+
+  const start = performance.now();
+  const dur = 700;
+  function step(now){
+    const t = Math.min((now-start)/dur, 1);
+    const ease = t<.5 ? 2*t*t : -1+(4-2*t)*t;
+    pkt.style.left = (from + (to-from)*ease) + 'px';
+    if(t<1){ requestAnimationFrame(step); }
+    else {
+      pkt.style.opacity='0';
+      setTimeout(()=>pkt.remove(), 200);
+    }
+  }
+  requestAnimationFrame(step);
+}
+</script>
+</body>
+</html>
