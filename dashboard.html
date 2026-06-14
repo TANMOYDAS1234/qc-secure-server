@@ -172,7 +172,7 @@ main{padding:20px;display:grid;gap:20px;grid-template-columns:1fr 1fr 1fr;grid-t
       Event Log
     </div>
     <div class="log-list" id="log-list">
-      <div style="color:var(--muted);font-size:12px;text-align:center;padding:20px">Waiting for events…</div>
+      <div data-empty style="color:var(--muted);font-size:12px;text-align:center;padding:20px">Waiting for events…</div>
     </div>
   </div>
 
@@ -221,14 +221,31 @@ setInterval(()=>{
   document.getElementById('clock').textContent = new Date().toLocaleTimeString();
 },1000);
 
+// Cumulative stats derived from the (de-duplicated) event stream, so the cards
+// show true running totals — not the last-20/last-30 server window they used to.
 let totalSessions=0, totalTransmitted=0, trustSum=0, trustCount=0;
-let logInitialized=false;
 
-// SSE for real-time events
+function applyStats(entry){
+  if(entry.event==='SESSION_CREATED') totalSessions++;
+  if(entry.event==='TRANSMITTED') totalTransmitted++;
+  // Average channel trust over evaluations (SESSION_CREATED / REJECTED).
+  // TRANSMITTED only echoes a session's trust, so it is not re-counted.
+  if((entry.event==='SESSION_CREATED' || entry.event==='REJECTED') && typeof entry.trust==='number'){
+    trustSum += entry.trust; trustCount++;
+  }
+  document.getElementById('stat-sessions').textContent = totalSessions;
+  document.getElementById('stat-transmitted').textContent = totalTransmitted;
+  document.getElementById('stat-trust').textContent = trustCount ? (trustSum/trustCount).toFixed(3) : '—';
+}
+
+// SSE is the SINGLE source of truth for the event log (the server replays
+// history on connect). appendLog() de-duplicates, so reconnect replays don't
+// double-render and stats are applied only to genuinely new events.
 const es = new EventSource('/stream');
 es.onmessage = e => {
   const entry = JSON.parse(e.data);
-  appendLog(entry);
+  if(!appendLog(entry)) return;        // already seen -> skip (no double count / re-animate)
+  applyStats(entry);
   if(entry.event==='SESSION_CREATED') triggerAnimation('alice-to-server', entry);
   if(entry.event==='TRANSMITTED') triggerAnimation('server-to-bob', entry);
 };
@@ -248,15 +265,8 @@ async function poll(){
       document.getElementById(key+'-state').textContent = on ? 'Online • Active' : 'Offline';
     });
 
-    // sessions
-    totalSessions = d.sessions.length;
-    totalTransmitted = d.log.filter(l=>l.event==='TRANSMITTED').length;
-    const trusts = d.log.filter(l=>l.trust).map(l=>l.trust);
-    const avgTrust = trusts.length ? (trusts.reduce((a,b)=>a+b,0)/trusts.length).toFixed(3) : '—';
-    document.getElementById('stat-sessions').textContent = totalSessions;
-    document.getElementById('stat-transmitted').textContent = totalTransmitted;
-    document.getElementById('stat-trust').textContent = avgTrust;
-
+    // Active sessions list (≤20). The stat cards are cumulative and driven by
+    // the SSE stream in applyStats(), not by this truncated polling window.
     // sessions list
     const sl = document.getElementById('sessions-list');
     if(d.sessions.length===0){
@@ -282,18 +292,21 @@ async function poll(){
         </div>`).join('');
     }
 
-    // init log from poll on first load
-    if(!logInitialized && d.log.length>0){
-      logInitialized=true;
-      document.getElementById('log-list').innerHTML='';
-      d.log.forEach(appendLog);
-    }
   }catch(e){}
 }
 poll();
 setInterval(poll, 2000);
 
+const seenLog = new Set();
+const seenOrder = [];
+function logKey(e){ return [e.time,e.event,e.session,e.sender,e.receiver].join('|'); }
+
 function appendLog(entry){
+  const key = logKey(entry);
+  if(seenLog.has(key)) return false;                              // de-dup (SSE reconnect replays)
+  seenLog.add(key); seenOrder.push(key);
+  if(seenOrder.length > 600) seenLog.delete(seenOrder.shift());   // bounded, > server log retention
+
   const ll = document.getElementById('log-list');
   if(ll.querySelector('[data-empty]')) ll.innerHTML='';
   const cls = entry.event==='SESSION_CREATED'?'ev-created':entry.event==='TRANSMITTED'?'ev-transmitted':'ev-rejected';
@@ -307,6 +320,7 @@ function appendLog(entry){
     <span class="log-trust">T:${entry.trust} E:${entry.bit_error}</span>`;
   ll.prepend(div);
   while(ll.children.length>40) ll.removeChild(ll.lastChild);
+  return true;
 }
 
 // Packet animation
