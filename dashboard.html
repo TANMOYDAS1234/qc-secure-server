@@ -113,6 +113,18 @@ main{padding:20px;display:grid;gap:20px;grid-template-columns:1fr 1fr 1fr;grid-t
 .node-indicator{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .ind-on{background:var(--green);box-shadow:0 0 6px var(--green)}
 .ind-off{background:var(--muted)}
+/* ── QUANTUM CHARTS ── */
+.chart-card{grid-column:1/-1}
+.qchart{width:100%;height:150px;display:block}
+.chart-legend{display:flex;gap:18px;margin-top:10px;font-size:11px;color:var(--muted);flex-wrap:wrap;align-items:center}
+.chart-legend span{display:inline-flex;align-items:center;gap:6px}
+.lg-dot{width:12px;height:3px;border-radius:2px;display:inline-block}
+.bloch-wrap{display:flex;flex-direction:column;align-items:center;gap:8px;padding-top:6px}
+#donut-legend{display:flex;flex-direction:column;gap:10px;font-size:12px;flex:1}
+#donut-legend .dl{display:flex;align-items:center;justify-content:space-between;gap:14px}
+#donut-legend .dl span{display:inline-flex;align-items:center;gap:8px;color:var(--text)}
+#donut-legend .dl b{font-family:'JetBrains Mono',monospace}
+.dl-dot{width:10px;height:10px;border-radius:3px;display:inline-block}
 </style>
 </head>
 <body>
@@ -163,6 +175,48 @@ main{padding:20px;display:grid;gap:20px;grid-template-columns:1fr 1fr 1fr;grid-t
       <div class="node node-bob">B</div>
     </div>
     <div style="font-size:11px;color:var(--muted);text-align:center;letter-spacing:.1em" id="transfer-status">Monitoring channel…</div>
+  </div>
+
+  <!-- QUANTUM CHANNEL CHART -->
+  <div class="card chart-card">
+    <div class="card-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M19 9l-5 5-4-4-4 4"/></svg>
+      Channel Trust &amp; QBER (live)
+    </div>
+    <svg class="qchart" id="qchart" viewBox="0 0 300 150" preserveAspectRatio="none"></svg>
+    <div class="chart-legend">
+      <span><i class="lg-dot" style="background:linear-gradient(90deg,#3b82f6,#a855f7)"></i> Trust</span>
+      <span><i class="lg-dot" style="background:linear-gradient(90deg,#10b981,#ef4444)"></i> QBER</span>
+      <span style="margin-left:auto">Approved <b id="cnt-approved" style="color:var(--green)">0</b> · Rejected <b id="cnt-rejected" style="color:var(--red)">0</b></span>
+    </div>
+  </div>
+
+  <!-- BLOCH SPHERE -->
+  <div class="card bloch-card">
+    <div class="card-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="9" ry="3.5"/></svg>
+      Latest Qubit · Bloch
+    </div>
+    <div class="bloch-wrap">
+      <canvas id="bloch" width="190" height="160"></canvas>
+      <div style="font-size:12px;color:var(--muted)">θ = <b id="bloch-theta" style="color:var(--purple);font-family:'JetBrains Mono',monospace">—</b> rad</div>
+    </div>
+  </div>
+
+  <!-- DECOY DONUT -->
+  <div class="card decoy-card">
+    <div class="card-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>
+      Decoy States
+    </div>
+    <div style="display:flex;align-items:center;gap:18px">
+      <canvas id="donut" width="120" height="120"></canvas>
+      <div id="donut-legend">
+        <div class="dl"><span><i class="dl-dot" style="background:#10b981"></i> Signal</span><b id="dc-signal">0</b></div>
+        <div class="dl"><span><i class="dl-dot" style="background:#f59e0b"></i> Decoy</span><b id="dc-decoy">0</b></div>
+        <div class="dl"><span><i class="dl-dot" style="background:#94a3b8"></i> Vacuum</span><b id="dc-vacuum">0</b></div>
+      </div>
+    </div>
   </div>
 
   <!-- LIVE LOG -->
@@ -224,19 +278,77 @@ setInterval(()=>{
 // Cumulative stats derived from the (de-duplicated) event stream, so the cards
 // show true running totals — not the last-20/last-30 server window they used to.
 let totalSessions=0, totalTransmitted=0, trustSum=0, trustCount=0;
+// Quantum chart state (accumulated from the SSE stream)
+let approvedCount=0, rejectedCount=0, latestTheta=null;
+const histTrust=[], histQber=[];
+const decoyCounts={signal:0,decoy:0,vacuum:0};
 
 function applyStats(entry){
   if(entry.event==='SESSION_CREATED') totalSessions++;
   if(entry.event==='TRANSMITTED') totalTransmitted++;
-  // Average channel trust over evaluations (SESSION_CREATED / REJECTED).
-  // TRANSMITTED only echoes a session's trust, so it is not re-counted.
+  // Channel evaluations carry trust/QBER/theta/decoy (TRANSMITTED only echoes).
   if((entry.event==='SESSION_CREATED' || entry.event==='REJECTED') && typeof entry.trust==='number'){
     trustSum += entry.trust; trustCount++;
+    histTrust.push(entry.trust);
+    histQber.push(typeof entry.bit_error==='number'?entry.bit_error:0);
+    if(histTrust.length>40){ histTrust.shift(); histQber.shift(); }
+    if(entry.event==='SESSION_CREATED') approvedCount++; else rejectedCount++;
+    if(typeof entry.theta==='number') latestTheta=entry.theta;
+    if(entry.decoy && decoyCounts[entry.decoy]!=null) decoyCounts[entry.decoy]++;
+    drawQuantum();
   }
   document.getElementById('stat-sessions').textContent = totalSessions;
   document.getElementById('stat-transmitted').textContent = totalTransmitted;
   document.getElementById('stat-trust').textContent = trustCount ? (trustSum/trustCount).toFixed(3) : '—';
 }
+
+function drawQuantum(){
+  document.getElementById('cnt-approved').textContent = approvedCount;
+  document.getElementById('cnt-rejected').textContent = rejectedCount;
+  // trust + QBER line chart (SVG, 0..1 on Y)
+  const W=300,H=150,pad=6;
+  const line=(arr)=>{ if(arr.length<2) return ''; const n=arr.length; return arr.map((v,i)=>{ const x=pad+(W-2*pad)*(i/(n-1)); const y=pad+(H-2*pad)*(1-Math.max(0,Math.min(1,v))); return (i?'L':'M')+x.toFixed(1)+' '+y.toFixed(1); }).join(' '); };
+  let grid=''; for(let g=0;g<=4;g++){ const y=pad+(H-2*pad)*(g/4); grid+='<line x1="'+pad+'" y1="'+y+'" x2="'+(W-pad)+'" y2="'+y+'" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>'; }
+  document.getElementById('qchart').innerHTML = grid+
+    '<path d="'+line(histTrust)+'" fill="none" stroke="#7c5cff" stroke-width="2" stroke-linejoin="round"/>'+
+    '<path d="'+line(histQber)+'" fill="none" stroke="#ef4444" stroke-width="2" stroke-linejoin="round" opacity="0.85"/>';
+  // bloch
+  const bc=document.getElementById('bloch');
+  if(bc && latestTheta!=null){ drawBloch(bc,latestTheta); document.getElementById('bloch-theta').textContent=latestTheta.toFixed(3); }
+  // decoy donut
+  drawDonut();
+  document.getElementById('dc-signal').textContent=decoyCounts.signal;
+  document.getElementById('dc-decoy').textContent=decoyCounts.decoy;
+  document.getElementById('dc-vacuum').textContent=decoyCounts.vacuum;
+}
+
+function drawBloch(c,theta){
+  const ctx=c.getContext('2d'),w=c.width,h=c.height; ctx.clearRect(0,0,w,h);
+  const cx=w/2,cy=h/2,R=Math.min(w,h)/2-18; ctx.lineWidth=1.2;
+  ctx.strokeStyle='rgba(255,255,255,0.22)'; ctx.beginPath(); ctx.arc(cx,cy,R,0,2*Math.PI); ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.beginPath(); ctx.ellipse(cx,cy,R,R*0.32,0,0,2*Math.PI); ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,255,0.10)'; ctx.beginPath(); ctx.moveTo(cx,cy-R); ctx.lineTo(cx,cy+R); ctx.stroke(); ctx.beginPath(); ctx.moveTo(cx-R,cy); ctx.lineTo(cx+R,cy); ctx.stroke();
+  ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.font='10px Inter,sans-serif'; ctx.textAlign='center'; ctx.fillText('|0⟩',cx,cy-R-5); ctx.fillText('|1⟩',cx,cy+R+12);
+  const t=theta||0,vx=cx+R*Math.cos(t),vy=cy+R*0.32*Math.sin(t);
+  const g=ctx.createLinearGradient(cx,cy,vx,vy); g.addColorStop(0,'#3b82f6'); g.addColorStop(1,'#a855f7');
+  ctx.strokeStyle=g; ctx.lineWidth=2.6; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(vx,vy); ctx.stroke();
+  ctx.fillStyle='#a855f7'; ctx.beginPath(); ctx.arc(vx,vy,5,0,2*Math.PI); ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.beginPath(); ctx.arc(cx,cy,2.5,0,2*Math.PI); ctx.fill();
+}
+
+function drawDonut(){
+  const c=document.getElementById('donut'); if(!c) return;
+  const ctx=c.getContext('2d'),w=c.width,h=c.height; ctx.clearRect(0,0,w,h);
+  const cx=w/2,cy=h/2,R=Math.min(w,h)/2-6,r=R*0.58;
+  const data=[['#10b981',decoyCounts.signal],['#f59e0b',decoyCounts.decoy],['#94a3b8',decoyCounts.vacuum]];
+  const total=data.reduce((a,d)=>a+d[1],0);
+  if(total===0){ ctx.strokeStyle='rgba(255,255,255,0.1)'; ctx.lineWidth=R-r; ctx.beginPath(); ctx.arc(cx,cy,(R+r)/2,0,2*Math.PI); ctx.stroke(); return; }
+  let ang=-Math.PI/2;
+  data.forEach(d=>{ if(!d[1]) return; const a2=ang+(d[1]/total)*2*Math.PI; ctx.beginPath(); ctx.fillStyle=d[0]; ctx.moveTo(cx,cy); ctx.arc(cx,cy,R,ang,a2); ctx.closePath(); ctx.fill(); ang=a2; });
+  ctx.fillStyle='#0d1220'; ctx.beginPath(); ctx.arc(cx,cy,r,0,2*Math.PI); ctx.fill();
+  ctx.fillStyle='#e2e8f0'; ctx.font='bold 16px JetBrains Mono,monospace'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(String(total),cx,cy);
+}
+drawQuantum();
 
 // SSE is the SINGLE source of truth for the event log (the server replays
 // history on connect). appendLog() de-duplicates, so reconnect replays don't

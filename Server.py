@@ -98,6 +98,7 @@ def qc_request():
         randomness = float(data["randomness"])
         sender = data["sender"]
         receiver = data["receiver"]
+        decoy_state = data.get("decoy_state", "signal")
 
         # Quantum evaluation
         result = qc.transmit(theta=theta, randomness=randomness)
@@ -114,6 +115,8 @@ def qc_request():
                 "receiver": receiver,
                 "trust": round(result["trust"], 4),
                 "bit_error": round(result["bit_error"], 4),
+                "theta": round(theta, 4),
+                "decoy": decoy_state,
                 "session": "-"
             })
 
@@ -132,6 +135,8 @@ def qc_request():
                 "receiver": receiver,
                 "trust": result["trust"],
                 "bit_error": result["bit_error"],
+                "theta": theta,
+                "decoy": decoy_state,
                 "receiver_ready": receiver_ready,
                 "created": time.time()
             }
@@ -143,6 +148,8 @@ def qc_request():
             "receiver": receiver,
             "trust": round(result["trust"], 4),
             "bit_error": round(result["bit_error"], 4),
+            "theta": round(theta, 4),
+            "decoy": decoy_state,
             "session": session_id[:8]
         })
 
