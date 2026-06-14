@@ -5,29 +5,37 @@ from qiskit_aer import AerSimulator
 
 class QuantumChannelSimulator:
 
-    def __init__(self, shots=512, trust_threshold=0.35):
+    def __init__(self, shots=512, trust_threshold=0.35, disturb_prob=0.10):
         self.simulator = AerSimulator()
         self.shots = shots
         self.trust_threshold = trust_threshold
+        # Probability that the channel is disturbed/eavesdropped on a given
+        # request. This is the single knob for how often a channel is rejected:
+        #   0.10 -> ~10% rejected   0.05 -> ~5%   0.00 -> never rejected.
+        self.disturb_prob = disturb_prob
 
     def quantum_measurement(self, theta):
         qc = QuantumCircuit(1, 1)
 
-        # Alice prepares |+> and encodes the key-derived phase.
+        # Alice encodes the qubit in a key-derived (theta) basis.
         qc.h(0)
         qc.rz(theta, 0)
 
-        # Channel disturbance / eavesdropper: ~30% of the time the relative
-        # phase is kicked by pi. On its own this is invisible in the Z basis,
-        # but the Hadamard below maps the phase onto the measured bit.
-        if np.random.rand() < 0.3:
-            qc.rz(np.pi, 0)
+        # --- Quantum channel ---
+        # An honest, undisturbed channel is left intact. An eavesdropper /
+        # tampering event (probability disturb_prob) injects a phase flip that
+        # the matched-basis measurement below turns into a full bit error.
+        disturbed = np.random.rand() < self.disturb_prob
+        if disturbed:
+            qc.z(0)
 
-        # KEY FIX: rotate the phase back into the computational basis so the
-        # encoded angle actually affects the outcome. Without this H, rz/z are
-        # pure phase and the measurement is a fixed 50/50 coin flip -> theta and
-        # the disturbance are unobservable and the trust gate is meaningless.
-        # With it, P(measure 1) = sin^2(theta/2)  (or cos^2(theta/2) if kicked).
+        # Bob measures in Alice's matched basis (undo the encoding). With no
+        # disturbance the rotations cancel and the result is deterministically
+        # |0> -> bit_error ~ 0 (channel trusted, message passes). A disturbance
+        # does not cancel and flips the outcome -> bit_error ~ 1 (rejected).
+        # This mirrors BB84: matched bases give no error unless the channel is
+        # tampered with, so rejection means "tampering detected", not bad luck.
+        qc.rz(-theta, 0)
         qc.h(0)
         qc.measure(0, 0)
 
@@ -40,9 +48,9 @@ class QuantumChannelSimulator:
     def compute_trust(self, bit_error, randomness):
         # Channel fidelity comes from the actual quantum measurement and
         # dominates the score (0.8). Client-supplied randomness is only a
-        # small, capped bonus (0.2) so a peer can no longer fabricate trust on
-        # a corrupted channel: with bit_error = 1, trust <= 0.2 < threshold and
-        # the channel is always rejected regardless of the randomness claimed.
+        # small, capped bonus (0.2) so a peer cannot fabricate trust on a
+        # tampered channel: with bit_error = 1, trust <= 0.2 < threshold and the
+        # channel is always rejected regardless of the randomness claimed.
         randomness = max(0.0, min(1.0, randomness))
         fidelity = 1.0 - bit_error
         trust = (0.8 * fidelity) + (0.2 * randomness)
