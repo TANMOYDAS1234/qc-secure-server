@@ -4,9 +4,23 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>QC Server — Quantum Channel Monitor</title>
+<script>try{if(localStorage.getItem('theme')==='light')document.documentElement.classList.add('light');}catch(e){}</script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cinzel+Decorative:wght@700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#080c14;--card:#0d1220;--card2:#111827;--border:#1e2d45;--primary:#3b82f6;--purple:#a855f7;--green:#10b981;--red:#ef4444;--yellow:#f59e0b;--text:#e2e8f0;--muted:#64748b}
+/* ── light theme ── */
+html.light{--bg:#eef2f7;--card:#ffffff;--card2:#f1f5f9;--border:#dbe3ee;--primary:#2563eb;--purple:#9333ea;--green:#059669;--red:#dc2626;--yellow:#d97706;--text:#1e293b;--muted:#64748b}
+html.light header{background:linear-gradient(135deg,rgba(255,255,255,0.95),rgba(241,245,249,0.9))}
+html.light .logo{color:#7c3aed;text-shadow:none}
+html.light .card{box-shadow:0 8px 24px rgba(40,60,100,0.08)}
+html.light .card::before{background:linear-gradient(135deg,rgba(59,130,246,0.04),transparent)}
+html.light .bar-track{background:rgba(0,0,0,0.06)}
+html.light .transfer-vis{background:rgba(0,0,0,0.04)}
+html.light .stat-value.blue,html.light .stat-value.green,html.light .stat-value.purple{text-shadow:none}
+html.light .log-list::-webkit-scrollbar-track,html.light .sessions-list::-webkit-scrollbar-track{background:transparent}
+#theme-btn{background:var(--card2);border:1px solid var(--border);color:var(--text);width:34px;height:34px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:all .2s;flex-shrink:0}
+#theme-btn:hover{border-color:var(--primary);color:var(--primary)}
+#theme-btn svg{width:17px;height:17px}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
 
@@ -150,6 +164,7 @@ main{padding:20px;display:grid;gap:20px;grid-template-columns:1fr 1fr 1fr;grid-t
       <span id="online-count">0 nodes</span>
     </div>
     <div id="clock">--:--:--</div>
+    <button id="theme-btn" type="button" title="Toggle light / dark" onclick="toggleTheme()" aria-label="Toggle theme"></button>
   </div>
 </header>
 
@@ -318,7 +333,8 @@ function drawQuantum(){
   // trust + QBER line chart (SVG, 0..1 on Y)
   const W=300,H=150,pad=6;
   const line=(arr)=>{ if(arr.length<2) return ''; const n=arr.length; return arr.map((v,i)=>{ const x=pad+(W-2*pad)*(i/(n-1)); const y=pad+(H-2*pad)*(1-Math.max(0,Math.min(1,v))); return (i?'L':'M')+x.toFixed(1)+' '+y.toFixed(1); }).join(' '); };
-  let grid=''; for(let g=0;g<=4;g++){ const y=pad+(H-2*pad)*(g/4); grid+='<line x1="'+pad+'" y1="'+y+'" x2="'+(W-pad)+'" y2="'+y+'" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>'; }
+  const gink=document.documentElement.classList.contains('light')?'30,41,59':'255,255,255';
+  let grid=''; for(let g=0;g<=4;g++){ const y=pad+(H-2*pad)*(g/4); grid+='<line x1="'+pad+'" y1="'+y+'" x2="'+(W-pad)+'" y2="'+y+'" stroke="rgba('+gink+',0.07)" stroke-width="1"/>'; }
   document.getElementById('qchart').innerHTML = grid+
     '<path d="'+line(histTrust)+'" fill="none" stroke="#7c5cff" stroke-width="2" stroke-linejoin="round"/>'+
     '<path d="'+line(histQber)+'" fill="none" stroke="#ef4444" stroke-width="2" stroke-linejoin="round" opacity="0.85"/>';
@@ -335,15 +351,16 @@ function drawQuantum(){
 function drawBloch(c,theta){
   const ctx=c.getContext('2d'),w=c.width,h=c.height; ctx.clearRect(0,0,w,h);
   const cx=w/2,cy=h/2,R=Math.min(w,h)/2-18; ctx.lineWidth=1.2;
-  ctx.strokeStyle='rgba(255,255,255,0.22)'; ctx.beginPath(); ctx.arc(cx,cy,R,0,2*Math.PI); ctx.stroke();
-  ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.beginPath(); ctx.ellipse(cx,cy,R,R*0.32,0,0,2*Math.PI); ctx.stroke();
-  ctx.strokeStyle='rgba(255,255,255,0.10)'; ctx.beginPath(); ctx.moveTo(cx,cy-R); ctx.lineTo(cx,cy+R); ctx.stroke(); ctx.beginPath(); ctx.moveTo(cx-R,cy); ctx.lineTo(cx+R,cy); ctx.stroke();
-  ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.font='10px Inter,sans-serif'; ctx.textAlign='center'; ctx.fillText('|0⟩',cx,cy-R-5); ctx.fillText('|1⟩',cx,cy+R+12);
+  const ink=document.documentElement.classList.contains('light')?'30,41,59':'255,255,255';
+  ctx.strokeStyle='rgba('+ink+',0.22)'; ctx.beginPath(); ctx.arc(cx,cy,R,0,2*Math.PI); ctx.stroke();
+  ctx.strokeStyle='rgba('+ink+',0.15)'; ctx.beginPath(); ctx.ellipse(cx,cy,R,R*0.32,0,0,2*Math.PI); ctx.stroke();
+  ctx.strokeStyle='rgba('+ink+',0.10)'; ctx.beginPath(); ctx.moveTo(cx,cy-R); ctx.lineTo(cx,cy+R); ctx.stroke(); ctx.beginPath(); ctx.moveTo(cx-R,cy); ctx.lineTo(cx+R,cy); ctx.stroke();
+  ctx.fillStyle='rgba('+ink+',0.55)'; ctx.font='10px Inter,sans-serif'; ctx.textAlign='center'; ctx.fillText('|0⟩',cx,cy-R-5); ctx.fillText('|1⟩',cx,cy+R+12);
   const t=theta||0,vx=cx+R*Math.cos(t),vy=cy+R*0.32*Math.sin(t);
   const g=ctx.createLinearGradient(cx,cy,vx,vy); g.addColorStop(0,'#3b82f6'); g.addColorStop(1,'#a855f7');
   ctx.strokeStyle=g; ctx.lineWidth=2.6; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(vx,vy); ctx.stroke();
   ctx.fillStyle='#a855f7'; ctx.beginPath(); ctx.arc(vx,vy,5,0,2*Math.PI); ctx.fill();
-  ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.beginPath(); ctx.arc(cx,cy,2.5,0,2*Math.PI); ctx.fill();
+  ctx.fillStyle='rgba('+ink+',0.85)'; ctx.beginPath(); ctx.arc(cx,cy,2.5,0,2*Math.PI); ctx.fill();
 }
 
 function drawDonut(){
@@ -352,12 +369,28 @@ function drawDonut(){
   const cx=w/2,cy=h/2,R=Math.min(w,h)/2-6,r=R*0.58;
   const data=[['#10b981',decoyCounts.signal],['#f59e0b',decoyCounts.decoy],['#94a3b8',decoyCounts.vacuum]];
   const total=data.reduce((a,d)=>a+d[1],0);
-  if(total===0){ ctx.strokeStyle='rgba(255,255,255,0.1)'; ctx.lineWidth=R-r; ctx.beginPath(); ctx.arc(cx,cy,(R+r)/2,0,2*Math.PI); ctx.stroke(); return; }
+  const cs=getComputedStyle(document.documentElement);
+  const cardBg=(cs.getPropertyValue('--card').trim())||'#0d1220';
+  const textCol=(cs.getPropertyValue('--text').trim())||'#e2e8f0';
+  const ink=document.documentElement.classList.contains('light')?'30,41,59':'255,255,255';
+  if(total===0){ ctx.strokeStyle='rgba('+ink+',0.1)'; ctx.lineWidth=R-r; ctx.beginPath(); ctx.arc(cx,cy,(R+r)/2,0,2*Math.PI); ctx.stroke(); return; }
   let ang=-Math.PI/2;
   data.forEach(d=>{ if(!d[1]) return; const a2=ang+(d[1]/total)*2*Math.PI; ctx.beginPath(); ctx.fillStyle=d[0]; ctx.moveTo(cx,cy); ctx.arc(cx,cy,R,ang,a2); ctx.closePath(); ctx.fill(); ang=a2; });
-  ctx.fillStyle='#0d1220'; ctx.beginPath(); ctx.arc(cx,cy,r,0,2*Math.PI); ctx.fill();
-  ctx.fillStyle='#e2e8f0'; ctx.font='bold 16px JetBrains Mono,monospace'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(String(total),cx,cy);
+  ctx.fillStyle=cardBg; ctx.beginPath(); ctx.arc(cx,cy,r,0,2*Math.PI); ctx.fill();
+  ctx.fillStyle=textCol; ctx.font='bold 16px JetBrains Mono,monospace'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(String(total),cx,cy);
 }
+
+// ===== Theme (dark default, light optional, persisted) =====
+const ICON_SUN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>';
+const ICON_MOON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>';
+function applyThemeIcon(){ const b=document.getElementById('theme-btn'); if(b) b.innerHTML=document.documentElement.classList.contains('light')?ICON_MOON:ICON_SUN; }
+function toggleTheme(){
+  const light=document.documentElement.classList.toggle('light');
+  try{ localStorage.setItem('theme', light?'light':'dark'); }catch(e){}
+  applyThemeIcon();
+  drawQuantum();   // redraw bloch / donut / chart in the new theme
+}
+applyThemeIcon();
 
 // Floating info tooltip (event-delegated)
 (function(){
